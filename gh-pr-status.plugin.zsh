@@ -220,10 +220,62 @@ _ghprs_segment() {
 }
 
 # ============================================================
-# 4. Theme Integration (placeholder — implemented in Task 8)
+# 4. Theme Integration
 # ============================================================
 
 # Run dep check; skip hook registration if required deps are missing
 if ! _ghprs_check_deps; then
   return 0
+fi
+
+if [[ "$ZSH_THEME" == *powerlevel10k* || "$ZSH_THEME" == *p10k* ]]; then
+  # ── PowerLevel10k ────────────────────────────────────────────────────────────
+  # prompt_my_pr() is called by p10k on each render. A bare `return` (no args)
+  # tells p10k to suppress the segment gap entirely when there is nothing to show.
+  function prompt_my_pr() {
+    _ghprs_segment
+    [[ -n "$_GHPRS_LAST_TEXT" ]] || return
+    p10k segment -b NONE -f "$_GHPRS_LAST_COLOR" -t "$_GHPRS_LAST_TEXT"
+  }
+
+else
+  # ── Plain oh-my-zsh (any theme) ──────────────────────────────────────────────
+  # _GHPRS_PREV_SEGMENT tracks the string we last prepended to RPROMPT.
+  # Each precmd call strips the previous value and re-prepends the fresh one,
+  # preserving any RPROMPT set by other plugins or the theme.
+  _GHPRS_PREV_SEGMENT=""
+
+  _ghprs_precmd() {
+    _ghprs_segment  # sets _GHPRS_LAST_TEXT and _GHPRS_LAST_COLOR
+
+    if [[ "$GH_PR_STATUS_MANAGE_RPROMPT" != "on" ]]; then
+      # off mode: expose the colored segment for manual RPROMPT embedding
+      if [[ -n "$_GHPRS_LAST_TEXT" ]]; then
+        GHPRS_SEGMENT="%F{$_GHPRS_LAST_COLOR}$_GHPRS_LAST_TEXT%f"
+      else
+        GHPRS_SEGMENT=""
+      fi
+      return
+    fi
+
+    # Strip our previously injected segment from RPROMPT to recover base value.
+    # This correctly handles other plugins that set RPROMPT after we loaded.
+    local base="$RPROMPT"
+    if [[ -n "$_GHPRS_PREV_SEGMENT" && "$base" == "$_GHPRS_PREV_SEGMENT"* ]]; then
+      base="${base#"$_GHPRS_PREV_SEGMENT"}"
+      base="${base# }"  # trim one leading space if present
+    fi
+
+    if [[ -n "$_GHPRS_LAST_TEXT" ]]; then
+      local colored="%F{$_GHPRS_LAST_COLOR}$_GHPRS_LAST_TEXT%f"
+      _GHPRS_PREV_SEGMENT="$colored"
+      RPROMPT="${colored}${base:+ $base}"
+    else
+      _GHPRS_PREV_SEGMENT=""
+      RPROMPT="$base"
+    fi
+  }
+
+  autoload -Uz add-zsh-hook
+  add-zsh-hook precmd _ghprs_precmd
 fi
