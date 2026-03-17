@@ -94,6 +94,108 @@ for f in test/test_*.zsh; do echo "=== $f ==="; zsh "$f"; echo ""; done
 zsh test/test_with_pr.zsh
 ```
 
+## Troubleshooting
+
+### Plugin not found after install
+
+Make sure you cloned into the correct directory with the right name:
+
+```bash
+ls ~/.oh-my-zsh/custom/plugins/gh-pr-status/gh-pr-status.plugin.zsh
+```
+
+The directory **must** be named `gh-pr-status`, not `oh-my-zsh-gh-pr-plugin`:
+
+```zsh
+git clone https://github.com/bhanurp/oh-my-zsh-gh-pr-plugin.git \
+  ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/gh-pr-status
+```
+
+### Segment not showing (p10k users)
+
+The plugin defines `prompt_my_pr()` automatically, but p10k won't render it unless
+`my_pr` is in your prompt elements. Add it to `~/.p10k.zsh`:
+
+```zsh
+typeset -g POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(my_pr status ...)
+```
+
+Then `source ~/.p10k.zsh` or restart the terminal.
+
+### Segment not showing (non-p10k users)
+
+Run these diagnostics:
+
+```bash
+# 1. Is the function loaded?
+typeset -f _ghprs_segment | head -1
+
+# 2. Does it produce output? (must be on a branch with an open PR)
+_ghprs_segment; echo "text='$_GHPRS_LAST_TEXT' color='$_GHPRS_LAST_COLOR'"
+
+# 3. Is gh authenticated and working?
+gh pr view --json number,url,statusCheckRollup
+
+# 4. Check RPROMPT
+echo "RPROMPT='$RPROMPT'"
+```
+
+### GitHub Enterprise
+
+The plugin works with GitHub Enterprise. Make sure `gh` is authenticated
+with your enterprise host:
+
+```bash
+# Check current auth
+gh auth status
+
+# Add enterprise host if not listed
+gh auth login --hostname github.yourcompany.com
+```
+
+Verify `gh pr view` works on your enterprise repo before expecting the segment to show.
+
+### Junk characters / garbled output
+
+This usually means your terminal does not support OSC 8 hyperlinks. Disable them:
+
+```zsh
+# In ~/.zshrc, before plugins=(...)
+GH_PR_STATUS_HYPERLINKS="off"
+```
+
+**Terminals with OSC 8 support:** iTerm2, Kitty, Ghostty, WezTerm, Windows Terminal
+
+**Terminals without OSC 8:** Terminal.app (macOS), older xterm, some SSH clients
+
+To verify the escape sequences are correct:
+
+```bash
+_ghprs_segment; print -r -- "$_GHPRS_LAST_TEXT" | xxd | head -5
+```
+
+### Segment shows but is stale / not updating
+
+The plugin caches results for `GH_PR_STATUS_CACHE_TTL` seconds (default: 60).
+To force a refresh, lower the TTL:
+
+```zsh
+GH_PR_STATUS_CACHE_TTL=10
+```
+
+### Missing dependencies warning at startup
+
+The plugin warns at startup if `gh`, `jq`, or `timeout` are missing:
+
+```
+[gh-pr-status] 'gh' CLI not found. PR status will not be shown.
+```
+
+Install the missing tools:
+- `gh`: https://cli.github.com
+- `jq`: `brew install jq` (macOS) or `sudo apt install jq` (Ubuntu)
+- `timeout`: `brew install coreutils` (macOS) — optional but recommended
+
 ## How it works
 
 1. On each prompt render, reads the current branch via `git rev-parse`
