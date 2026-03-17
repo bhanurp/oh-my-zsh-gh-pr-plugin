@@ -1,10 +1,17 @@
 #!/usr/bin/env zsh
 # test/helpers.zsh — shared assertion utilities and test setup helpers
 
-integer _GHPRS_TEST_FAILURES=0
+# Use a temp file to track failures across subshells
+_GHPRS_FAIL_FILE=$(mktemp)
+print 0 > "$_GHPRS_FAIL_FILE"
 
 pass() { print -P "%F{green}PASS%f: $1"; }
-fail() { print -P "%F{red}FAIL%f: $1"; (( _GHPRS_TEST_FAILURES++ )); }
+fail() {
+  print -P "%F{red}FAIL%f: $1"
+  local count
+  count=$(<"$_GHPRS_FAIL_FILE")
+  print $(( count + 1 )) > "$_GHPRS_FAIL_FILE"
+}
 
 assert_equals()       { [[ "$1" == "$2" ]] && pass "$3" || fail "$3 (expected '$2', got '$1')"; }
 assert_empty()        { [[ -z "$1" ]]      && pass "$2" || fail "$2 (expected empty, got '$1')"; }
@@ -14,11 +21,14 @@ assert_not_contains() { [[ "$1" != *"$2"* ]] && pass "$3" || fail "$3 (expected 
 
 summarize() {
   print ""
-  if (( _GHPRS_TEST_FAILURES == 0 )); then
+  local failures
+  failures=$(<"$_GHPRS_FAIL_FILE")
+  rm -f "$_GHPRS_FAIL_FILE"
+  if (( failures == 0 )); then
     print -P "%F{green}All tests passed.%f"
     exit 0
   else
-    print -P "%F{red}${_GHPRS_TEST_FAILURES} test(s) failed.%f"
+    print -P "%F{red}${failures} test(s) failed.%f"
     exit 1
   fi
 }
@@ -36,10 +46,9 @@ _ghprs_make_path_without() {
   local missing_tool="$1"
   local tmpdir
   tmpdir=$(mktemp -d)
-  local tool
+  local tool real
   for tool in gh jq timeout sed cksum date git zsh; do
     if [[ "$tool" != "$missing_tool" ]]; then
-      local real
       real=$(command -v "$tool" 2>/dev/null)
       [[ -n "$real" ]] && ln -s "$real" "$tmpdir/$tool"
     fi
